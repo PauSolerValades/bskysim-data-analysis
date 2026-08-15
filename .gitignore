@@ -1,0 +1,5 @@
+# Tabular result data — keep the plots (png/svg/pdf), drop the tables
+results/
+*.csv
+*.ssv
+*.tsv
