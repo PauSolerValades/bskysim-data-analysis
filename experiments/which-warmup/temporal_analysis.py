@@ -15,7 +15,19 @@ from concurrent.futures import ThreadPoolExecutor
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
+import seaborn as sns
 from utils import Config
+
+# Thesis styling (mirrors firehose-analysis AGENTS.md; usetex off — no TeX on this box)
+sns.set_theme(style="whitegrid")
+plt.rcParams.update({
+    "text.usetex": False,
+    "axes.labelsize": 11,
+    "font.size": 11,
+    "legend.fontsize": 11,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+})
 
 # ---------------------------------------------------------------------------
 # Main
@@ -138,70 +150,184 @@ def _viridis_colors(n: int) -> list:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Curve computations (shared by per-warmup and overlay plots)
+# ---------------------------------------------------------------------------
+
+
+def _boredom_curve(all_data, config, warmup):
+    """(centers, rate) of boredom-ended sessions after warmup; (None, None) if empty."""
+    parts = [
+        all_data[warmup][run]["sessions"]
+        .filter(pl.col("type") == "end_boredom")
+        .select("time")
+        for run in range(config.num_runs)
+    ]
+    all_times_df = pl.concat(parts) if parts else pl.DataFrame(schema={"time": pl.Float64})
+    if all_times_df.is_empty():
+        return None, None
+    arr = (
+        all_times_df.filter(
+            (pl.col("time") >= warmup) & (pl.col("time") <= warmup + 5000)
+        )
+        .select((pl.col("time") - warmup).alias("rel"))
+        .to_series()
+        .to_numpy()
+    )
+    if len(arr) == 0:
+        return None, None
+    bins = np.logspace(np.log10(1), np.log10(5100), 50)
+    counts, _ = np.histogram(arr, bins=bins)
+    rate = counts / np.diff(bins) / config.num_runs
+    return (bins[:-1] + bins[1:]) / 2, rate
+
+
+def _attention_curve(all_data, config, warmup, bin_size, min_total):
+    """(xs, ys) % actions on warmup posts, binned; (None, None) if empty."""
+    parts = []
+    for run in range(config.num_runs):
+        d = all_data[warmup][run]
+        obs = _post_warmup_actions(d["actions"], d["creates"], warmup)
+        parts.append(
+            obs.select(
+                ((pl.col("time") - warmup) // bin_size).cast(pl.Int64).alias("bin"),
+                pl.col("is_warmup"),
+            )
+        )
+    if not parts:
+        return None, None
+    agg = (
+        pl.concat(parts).group_by("bin")
+        .agg(pl.len().alias("total"), pl.col("is_warmup").sum().alias("wp"))
+        .sort("bin")
+    )
+    max_bin = agg["bin"].max()
+    xs = np.arange(0, max_bin + 1) * bin_size
+    full = pl.DataFrame({"bin": range(max_bin + 1)}).join(agg, on="bin", how="left").fill_null(0)
+    ys = [
+        wp / total * 100 if total > min_total else np.nan
+        for wp, total in zip(full["wp"].to_list(), full["total"].to_list())
+    ]
+    return xs, ys
+
+
+def _traction_curve(all_data, config, warmup, bin_size):
+    """(xs, ys) impressions per new post, binned; (None, None) if empty."""
+    imp_parts, np_parts = [], []
+    for run in range(config.num_runs):
+        d = all_data[warmup][run]
+        actions, creates = d["actions"], d["creates"]
+        obs = _post_warmup_actions(actions, creates, warmup)
+        imp_parts.append(
+            obs.filter(~pl.col("is_warmup"))
+            .select(((pl.col("time") - warmup) // bin_size).cast(pl.Int64).alias("bin"))
+        )
+        np_parts.append(
+            creates.filter(pl.col("time") >= warmup)
+            .select(((pl.col("time") - warmup) // bin_size).cast(pl.Int64).alias("bin"))
+        )
+    if not imp_parts:
+        return None, None
+    imp_agg = pl.concat(imp_parts).group_by("bin").len(name="impressions").sort("bin")
+    np_agg = pl.concat(np_parts).group_by("bin").len(name="new_posts").sort("bin")
+    max_bin = max(
+        imp_agg["bin"].max() if not imp_agg.is_empty() else 0,
+        np_agg["bin"].max() if not np_agg.is_empty() else 0,
+    )
+    full_imp = pl.DataFrame({"bin": range(max_bin + 1)}).join(imp_agg, on="bin", how="left").fill_null(0)
+    full_np = pl.DataFrame({"bin": range(max_bin + 1)}).join(np_agg, on="bin", how="left").fill_null(0)
+    xs = np.arange(0, max_bin + 1) * bin_size
+    ys = [
+        (imp / config.num_runs) / max(np_count / config.num_runs, 1) if np_count > 0 else np.nan
+        for imp, np_count in zip(full_imp["impressions"].to_list(), full_np["new_posts"].to_list())
+    ]
+    return xs, ys
+
+
+def _first_session_backlogs(all_data, config, warmup):
+    backlogs: list[int] = []
+    for run in range(config.num_runs):
+        sessions = all_data[warmup][run]["sessions"]
+        ends = sessions.filter(pl.col("type").is_in(["end", "end_boredom"]))
+        backlogs.extend(ends.unique(subset=["user_id"], keep="first")["backlog"].to_list())
+    return backlogs
+
+
+def _sessions_actions(config, warmup):
+    path = config.datasets_dir / f"warmup-{warmup:g}" / "sessions.parquet"
+    if not path.exists():
+        print(f"  [skip] {path} not found — skipping sessions_actions for warmup={warmup}")
+        return []
+    return pl.read_parquet(str(path))["total_actions"].to_list()
+
+
+# ---------------------------------------------------------------------------
+# Generic folder writer: per-warmup files + 2x3 combined (warmups + overlay)
+# ---------------------------------------------------------------------------
+
+
+def _write_graph_folder(graph_name, combined_title, warmups, draw_one, draw_all, config):
+    folder = config.output_dir / graph_name
+    folder.mkdir(parents=True, exist_ok=True)
+    colors = _viridis_colors(len(warmups))
+
+    for i, w in enumerate(warmups):
+        fig, ax = plt.subplots(figsize=(5, 4))
+        draw_one(ax, w, colors[i])
+        ax.set_title(f"warmup={w:g}")
+        fig.tight_layout()
+        fig.savefig(folder / f"{w:g}.png", dpi=150)
+        plt.close(fig)
+
+    n = len(warmups)
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    flat = axes.flatten()
+    for i, w in enumerate(warmups):
+        draw_one(flat[i], w, colors[i])
+        flat[i].set_title(f"warmup={w:g}")
+    draw_all(flat[n], warmups, colors)
+    flat[n].set_title("all warmups")
+    for ax in flat[n + 1 :]:
+        ax.set_visible(False)
+    fig.suptitle(combined_title, fontsize=13, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(folder / "combined.png", dpi=150)
+    plt.close(fig)
+    print(f"  Saved {graph_name}/ ({n} warmups + combined.png)")
+
+
+# ---------------------------------------------------------------------------
 # Plot: boredom timeline
 # ---------------------------------------------------------------------------
 
 
-def plot_boredom_timeline(all_data: dict, config: Config) -> None:
-    """Histogram: when do boredom-ended sessions occur?"""
-    warmups = config.warmups
-    n_warmups = len(warmups)
-    n_cols = 4
-    n_rows = (n_warmups + n_cols - 1) // n_cols
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
-    axes_flat = axes.flatten() if hasattr(axes, 'flatten') else [axes]
-    colors = _viridis_colors(n_warmups)
-
-    for idx, warmup in enumerate(warmups):
-        ax = axes_flat[idx]
-        # Collect all boredom times via Polars concat instead of Python list
-        parts = [
-            all_data[warmup][run]["sessions"]
-            .filter(pl.col("type") == "end_boredom")
-            .select("time")
-            for run in range(config.num_runs)
-        ]
-        all_times_df = pl.concat(parts) if parts else pl.DataFrame(schema={"time": pl.Float64})
-        if all_times_df.is_empty():
-            continue
-
-        arr = (
-            all_times_df.filter(
-                (pl.col("time") >= warmup) & (pl.col("time") <= warmup + 5000)
-            )
-            .select((pl.col("time") - warmup).alias("rel"))
-            .to_series()
-            .to_numpy()
-        )
-        if len(arr) == 0:
-            continue
-
-        bins = np.logspace(np.log10(1), np.log10(5100), 50)
-        counts, _ = np.histogram(arr, bins=bins)
-        bin_widths = np.diff(bins)
-        rate = counts / bin_widths / config.num_runs
-        centers = (bins[:-1] + bins[1:]) / 2
-
-        ax.loglog(centers, rate, ".-", color=colors[idx], linewidth=1, markersize=2)
+def plot_boredom_timeline(all_data, config):
+    def one(ax, w, color):
+        centers, rate = _boredom_curve(all_data, config, w)
+        if centers is None:
+            return
+        ax.loglog(centers, rate, ".-", color=color, linewidth=1, markersize=2)
         ax.axvline(x=1, color="red", linestyle="--", alpha=0.3)
         ax.set_xlabel("Ticks after warmup")
         ax.set_ylabel("Boredom ends / tick / run")
-        ax.set_title(f"warmup={warmup}")
         ax.grid(True, alpha=0.2, which="both")
 
-    # Hide unused axes
-    for ax in axes_flat[len(warmups) :]:
-        ax.set_visible(False)
+    def allw(ax, warmups, colors):
+        for i, w in enumerate(warmups):
+            centers, rate = _boredom_curve(all_data, config, w)
+            if centers is None:
+                continue
+            ax.loglog(centers, rate, ".-", color=colors[i], label=f"w={w:g}", linewidth=1.5, markersize=2)
+        ax.set_xlabel("Ticks after warmup")
+        ax.set_ylabel("Boredom ends / tick / run")
+        ax.legend()
+        ax.grid(True, alpha=0.2, which="both")
 
-    fig.suptitle(
+    _write_graph_folder(
+        "boredom_timeline",
         "Boredom-ended sessions over time (log-log, per-tick rate, avg over runs)",
-        fontsize=13,
-        fontweight="bold",
+        config.warmups, one, allw, config,
     )
-    fig.tight_layout()
-    fig.savefig(config.output_dir / "boredom_timeline.png", dpi=150)
-    plt.close(fig)
-    print("  Saved boredom_timeline.png")
 
 
 # ---------------------------------------------------------------------------
@@ -209,83 +335,41 @@ def plot_boredom_timeline(all_data: dict, config: Config) -> None:
 # ---------------------------------------------------------------------------
 
 
-def plot_warmup_attention_decay(all_data: dict, config: Config) -> None:
-    """% of actions on warmup posts, binned over time."""
-    warmups = config.warmups
-    n_warmups = len(warmups)
-    n_cols = 4
-    n_rows = (n_warmups + n_cols - 1) // n_cols
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
-    axes_flat = axes.flatten() if hasattr(axes, 'flatten') else [axes]
-    colors = _viridis_colors(n_warmups)
+def plot_warmup_attention_decay(all_data, config):
     bin_size = config.bin_size
 
-    for idx, warmup in enumerate(warmups):
-        ax = axes_flat[idx]
-
-        if warmup == 0:
-            ax.text(
-                0.5,
-                0.5,
-                "warmup=0\n(no warmup posts)",
-                ha="center",
-                va="center",
-                transform=ax.transAxes,
-                fontsize=12,
-            )
-            ax.set_title("warmup=0")
-            continue
-
-        # Native Polars binning — avoids iter_rows()
-        parts = []
-        for run in range(config.num_runs):
-            d = all_data[warmup][run]
-            obs = _post_warmup_actions(d["actions"], d["creates"], warmup)
-            parts.append(
-                obs.select(
-                    ((pl.col("time") - warmup) // bin_size).cast(pl.Int64).alias("bin"),
-                    pl.col("is_warmup"),
-                )
-            )
-        if not parts:
-            continue
-        all_binned = pl.concat(parts)
-        agg = all_binned.group_by("bin").agg(
-            pl.len().alias("total"),
-            pl.col("is_warmup").sum().alias("wp"),
-        )
-        agg_sorted = agg.sort("bin")
-
-        max_bin = agg_sorted["bin"].max()
-        xs = np.arange(0, max_bin + 1) * bin_size
-        # Build aligned arrays via a join to fill missing bins with 0
-        full = pl.DataFrame({"bin": range(max_bin + 1)}).join(
-            agg_sorted, on="bin", how="left"
-        ).fill_null(0)
-        ys = [
-            wp / total * 100 if total > 10 else np.nan
-            for wp, total in zip(full["wp"].to_list(), full["total"].to_list())
-        ]
-
-        ax.plot(xs, ys, "-", color=colors[idx], linewidth=1.5, alpha=0.9)
+    def one(ax, w, color):
+        if w == 0:
+            ax.text(0.5, 0.5, "warmup=0\n(no warmup posts)", ha="center", va="center",
+                    transform=ax.transAxes, fontsize=12)
+            return
+        xs, ys = _attention_curve(all_data, config, w, bin_size, min_total=10)
+        if xs is None:
+            return
+        ax.plot(xs, ys, "-", color=color, linewidth=1.5, alpha=0.9)
         ax.axhline(y=0, color="red", linestyle="--", alpha=0.3)
         ax.set_xlabel("Ticks after warmup")
         ax.set_ylabel("% actions on warmup posts")
-        ax.set_title(f"warmup={warmup}")
         ax.set_ylim(-5, 105)
 
-    for ax in axes_flat[len(warmups) :]:
-        ax.set_visible(False)
+    def allw(ax, warmups, colors):
+        for i, w in enumerate(warmups):
+            if w == 0:
+                continue
+            xs, ys = _attention_curve(all_data, config, w, bin_size, min_total=50)
+            if xs is None:
+                continue
+            ax.plot(xs, ys, "-", color=colors[i], label=f"w={w:g}", linewidth=1.5)
+        ax.set_xlabel("Ticks after warmup")
+        ax.set_ylabel("% actions on warmup posts")
+        ax.legend()
+        ax.grid(True, alpha=0.2)
 
-    fig.suptitle(
+    _write_graph_folder(
+        "warmup_attention_decay",
         f"Warmup post attention decay over time (binned every {bin_size} ticks, avg over runs)",
-        fontsize=13,
-        fontweight="bold",
+        config.warmups, one, allw, config,
     )
-    fig.tight_layout()
-    fig.savefig(config.output_dir / "warmup_attention_decay.png", dpi=150)
-    plt.close(fig)
-    print("  Saved warmup_attention_decay.png")
 
 
 # ---------------------------------------------------------------------------
@@ -293,82 +377,33 @@ def plot_warmup_attention_decay(all_data: dict, config: Config) -> None:
 # ---------------------------------------------------------------------------
 
 
-def plot_new_post_traction(all_data: dict, config: Config) -> None:
-    """Impressions per new post over time — when do new posts get seen?"""
-    warmups = config.warmups
-    n_warmups = len(warmups)
-    n_cols = 4
-    n_rows = (n_warmups + n_cols - 1) // n_cols
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
-    axes_flat = axes.flatten() if hasattr(axes, 'flatten') else [axes]
-    colors = _viridis_colors(n_warmups)
+def plot_new_post_traction(all_data, config):
     bin_size = config.bin_size
 
-    for idx, warmup in enumerate(warmups):
-        ax = axes_flat[idx]
-        # Native Polars binning — avoids iter_rows()
-        imp_parts, np_parts = [], []
-        for run in range(config.num_runs):
-            d = all_data[warmup][run]
-            actions, creates = d["actions"], d["creates"]
-            obs = _post_warmup_actions(actions, creates, warmup)
-            imp_parts.append(
-                obs.filter(~pl.col("is_warmup"))
-                .select(((pl.col("time") - warmup) // bin_size).cast(pl.Int64).alias("bin"))
-            )
-            np_parts.append(
-                creates.filter(pl.col("time") >= warmup)
-                .select(((pl.col("time") - warmup) // bin_size).cast(pl.Int64).alias("bin"))
-            )
-        if not imp_parts:
-            continue
-
-        imp_agg = (
-            pl.concat(imp_parts).group_by("bin").len(name="impressions").sort("bin")
-        )
-        np_agg = (
-            pl.concat(np_parts).group_by("bin").len(name="new_posts").sort("bin")
-        )
-
-        max_bin = max(
-            imp_agg["bin"].max() if not imp_agg.is_empty() else 0,
-            np_agg["bin"].max() if not np_agg.is_empty() else 0,
-        )
-        full_imp = pl.DataFrame({"bin": range(max_bin + 1)}).join(
-            imp_agg, on="bin", how="left"
-        ).fill_null(0)
-        full_np = pl.DataFrame({"bin": range(max_bin + 1)}).join(
-            np_agg, on="bin", how="left"
-        ).fill_null(0)
-
-        xs = np.arange(0, max_bin + 1) * bin_size
-        ys = [
-            (imp / config.num_runs) / max(np_count / config.num_runs, 1)
-            if np_count > 0
-            else np.nan
-            for imp, np_count in zip(
-                full_imp["impressions"].to_list(),
-                full_np["new_posts"].to_list(),
-            )
-        ]
-
-        ax.plot(xs, ys, "-", color=colors[idx], linewidth=1.5, alpha=0.9)
+    def one(ax, w, color):
+        xs, ys = _traction_curve(all_data, config, w, bin_size)
+        if xs is None:
+            return
+        ax.plot(xs, ys, "-", color=color, linewidth=1.5, alpha=0.9)
         ax.set_xlabel("Ticks after warmup")
         ax.set_ylabel("Impressions per new post")
-        ax.set_title(f"warmup={warmup}")
 
-    for ax in axes_flat[len(warmups) :]:
-        ax.set_visible(False)
+    def allw(ax, warmups, colors):
+        for i, w in enumerate(warmups):
+            xs, ys = _traction_curve(all_data, config, w, bin_size)
+            if xs is None:
+                continue
+            ax.plot(xs, ys, "-", color=colors[i], label=f"w={w:g}", linewidth=1.5)
+        ax.set_xlabel("Ticks after warmup")
+        ax.set_ylabel("Impressions per new post")
+        ax.legend()
+        ax.grid(True, alpha=0.2)
 
-    fig.suptitle(
+    _write_graph_folder(
+        "new_post_traction",
         f"New post traction over time (impressions/post, binned every {bin_size} ticks, avg over runs)",
-        fontsize=13,
-        fontweight="bold",
+        config.warmups, one, allw, config,
     )
-    fig.tight_layout()
-    fig.savefig(config.output_dir / "new_post_traction.png", dpi=150)
-    plt.close(fig)
-    print("  Saved new_post_traction.png")
 
 
 # ---------------------------------------------------------------------------
@@ -376,42 +411,37 @@ def plot_new_post_traction(all_data: dict, config: Config) -> None:
 # ---------------------------------------------------------------------------
 
 
-def plot_first_session_backlog(all_data: dict, config: Config) -> None:
-    """Boxplot: backlog posts deleted when each user's first session ends."""
-    fig, ax = plt.subplots(figsize=(12, 6))
-    data, labels = [], []
+def plot_first_session_backlog(all_data, config):
+    def one(ax, w, color):
+        bp = ax.boxplot(
+            [_first_session_backlogs(all_data, config, w)],
+            patch_artist=True, showfliers=False, widths=0.6,
+        )
+        bp["boxes"][0].set_facecolor(color)
+        bp["boxes"][0].set_alpha(0.7)
+        ax.set_xticks([1], [f"{w:g}"])
+        ax.set_xlabel("Warmup time")
+        ax.set_ylabel("Backlog posts deleted on session end")
+        ax.grid(True, alpha=0.2, axis="y")
 
-    for warmup in config.warmups:
-        all_backlogs: list[int] = []
-        for run in range(config.num_runs):
-            sessions = all_data[warmup][run]["sessions"]
-            ends = sessions.filter(pl.col("type").is_in(["end", "end_boredom"]))
-            first_ends = ends.unique(subset=["user_id"], keep="first")
-            all_backlogs.extend(first_ends["backlog"].to_list())
-        data.append(all_backlogs)
-        labels.append(str(warmup))
+    def allw(ax, warmups, colors):
+        data = [_first_session_backlogs(all_data, config, w) for w in warmups]
+        bp = ax.boxplot(
+            data, tick_labels=[f"{w:g}" for w in warmups],
+            patch_artist=True, showfliers=False, widths=0.6,
+        )
+        for patch, color in zip(bp["boxes"], colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.7)
+        ax.set_xlabel("Warmup time")
+        ax.set_ylabel("Backlog posts deleted on session end")
+        ax.grid(True, alpha=0.2, axis="y")
 
-    bp = ax.boxplot(
-        data,
-        tick_labels=labels,
-        patch_artist=True,
-        showfliers=False,
-        widths=0.6,
+    _write_graph_folder(
+        "first_session_backlog",
+        "Posts lost when first session ends (discarded from active timeline, all users)",
+        config.warmups, one, allw, config,
     )
-    for patch, color in zip(bp["boxes"], _viridis_colors(len(config.warmups))):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.7)
-
-    ax.set_xlabel("Warmup time")
-    ax.set_ylabel("Backlog posts deleted on session end")
-    ax.set_title(
-        "Posts lost when first session ends (discarded from active timeline, all users)"
-    )
-    ax.grid(True, alpha=0.2, axis="y")
-    fig.tight_layout()
-    fig.savefig(config.output_dir / "first_session_backlog.png", dpi=150)
-    plt.close(fig)
-    print("  Saved first_session_backlog.png")
 
 
 # ---------------------------------------------------------------------------
@@ -419,196 +449,113 @@ def plot_first_session_backlog(all_data: dict, config: Config) -> None:
 # ---------------------------------------------------------------------------
 
 
-def plot_sessions_actions(config: Config) -> None:
-    """Boxplot: total actions per session from the sessions dataset."""
-    fig, ax = plt.subplots(figsize=(12, 6))
-    data, labels = [], []
+def plot_sessions_actions(config):
+    def one(ax, w, color):
+        data = _sessions_actions(config, w)
+        bp = ax.boxplot([data], patch_artist=True, showfliers=False, widths=0.6)
+        bp["boxes"][0].set_facecolor(color)
+        bp["boxes"][0].set_alpha(0.7)
+        ax.set_xticks([1], [f"{w:g}"])
+        ax.set_xlabel("Warmup time")
+        ax.set_ylabel("Actions per session")
+        ax.grid(True, alpha=0.2, axis="y")
 
-    for warmup in config.warmups:
-        path = config.datasets_dir / f"warmup-{warmup:g}" / "sessions.parquet"
-        if not path.exists():
-            print(
-                f"  [skip] {path} not found — skipping sessions_actions for warmup={warmup}"
-            )
-            data.append([])
-            labels.append(str(warmup))
-            continue
+    def allw(ax, warmups, colors):
+        data, labels = [], []
+        for w in warmups:
+            data.append(_sessions_actions(config, w))
+            labels.append(f"{w:g}")
+        bp = ax.boxplot(
+            data, tick_labels=labels,
+            patch_artist=True, showfliers=False, widths=0.6,
+        )
+        for patch, color in zip(bp["boxes"], colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.7)
+        ax.set_xlabel("Warmup time")
+        ax.set_ylabel("Actions per session")
+        ax.grid(True, alpha=0.2, axis="y")
 
-        df = pl.read_parquet(str(path))
-        data.append(df["total_actions"].to_list())
-        labels.append(str(warmup))
-
-    bp = ax.boxplot(
-        data,
-        tick_labels=labels,
-        patch_artist=True,
-        showfliers=False,
-        widths=0.6,
+    _write_graph_folder(
+        "sessions_actions",
+        "Total actions per session (all users, all runs)",
+        config.warmups, one, allw, config,
     )
-    for patch, color in zip(bp["boxes"], _viridis_colors(len(config.warmups))):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.7)
-
-    ax.set_xlabel("Warmup time")
-    ax.set_ylabel("Actions per session")
-    ax.set_title("Total actions per session (all users, all runs)")
-    ax.grid(True, alpha=0.2, axis="y")
-    fig.tight_layout()
-    fig.savefig(config.output_dir / "sessions_actions.png", dpi=150)
-    plt.close(fig)
-    print("  Saved sessions_actions.png")
 
 
 # ---------------------------------------------------------------------------
-# Plot: combined summary
+# Plot: combined summary — 3 separated overlay images + the 1x3 combined
 # ---------------------------------------------------------------------------
 
 
-def plot_combined_summary(all_data: dict, config: Config) -> None:
-    """One summary plot: boredom + warmup attention + new post traction."""
+def plot_combined_summary(all_data, config):
+    folder = config.output_dir / "combined_summary"
+    folder.mkdir(parents=True, exist_ok=True)
     warmups = config.warmups
     colors = _viridis_colors(len(warmups))
+
+    def boredom_panel(ax, legend=True):
+        for i, w in enumerate(warmups):
+            centers, rate = _boredom_curve(all_data, config, w)
+            if centers is None:
+                continue
+            ax.loglog(centers, rate, ".-", color=colors[i], label=f"w={w:g}", linewidth=1.5, markersize=2)
+        ax.set_xlabel("Ticks after warmup")
+        ax.set_ylabel("Boredom ends / tick / run")
+        ax.set_title("Boredom rate (log-log)")
+        if legend:
+            ax.legend()
+        ax.grid(True, alpha=0.2, which="both")
+
+    def attention_panel(ax, legend=True):
+        for i, w in enumerate(warmups):
+            if w == 0:
+                continue
+            xs, ys = _attention_curve(all_data, config, w, 100, min_total=50)
+            if xs is None:
+                continue
+            ax.plot(xs, ys, "-", color=colors[i], label=f"w={w:g}", linewidth=1.5)
+        ax.set_xlabel("Ticks after warmup")
+        ax.set_ylabel("% actions on warmup posts")
+        ax.set_title("Warmup attention decay")
+        if legend:
+            ax.legend()
+        ax.grid(True, alpha=0.2)
+
+    def traction_panel(ax, legend=True):
+        for i, w in enumerate(warmups):
+            xs, ys = _traction_curve(all_data, config, w, 100)
+            if xs is None:
+                continue
+            ax.plot(xs, ys, "-", color=colors[i], label=f"w={w:g}", linewidth=1.5)
+        ax.set_xlabel("Ticks after warmup")
+        ax.set_ylabel("Impressions per new post")
+        ax.set_title("New post traction")
+        if legend:
+            ax.legend()
+        ax.grid(True, alpha=0.2)
+
+    # separated images (the three panels, each with all warmups overlaid)
+    for name, panel in [("boredom", boredom_panel), ("attention_decay", attention_panel), ("new_post_traction", traction_panel)]:
+        fig, ax = plt.subplots(figsize=(7, 5))
+        panel(ax)
+        fig.tight_layout()
+        fig.savefig(folder / f"{name}.png", dpi=150)
+        plt.close(fig)
+
+    # same combined as before: 1x3
     fig, axes = plt.subplots(1, 3, figsize=(22, 6))
-
-    # 1. Boredom rate
-    ax = axes[0]
-    for idx, warmup in enumerate(warmups):
-        parts = [
-            all_data[warmup][run]["sessions"]
-            .filter(pl.col("type") == "end_boredom")
-            .select("time")
-            for run in range(config.num_runs)
-        ]
-        all_times_df = pl.concat(parts) if parts else pl.DataFrame(schema={"time": pl.Float64})
-        if all_times_df.is_empty():
-            continue
-        arr = (
-            all_times_df.filter(
-                (pl.col("time") >= warmup) & (pl.col("time") <= warmup + 5000)
-            )
-            .select((pl.col("time") - warmup).alias("rel"))
-            .to_series()
-            .to_numpy()
-        )
-        if len(arr) == 0:
-            continue
-        bins = np.logspace(np.log10(1), np.log10(5000), 60)
-        counts, _ = np.histogram(arr, bins=bins)
-        rate = counts / np.diff(bins) / config.num_runs
-        centers = (bins[:-1] + bins[1:]) / 2
-        ax.loglog(
-            centers,
-            rate,
-            ".-",
-            color=colors[idx],
-            label=f"w={warmup:g}",
-            linewidth=1.5,
-            markersize=2,
-        )
-    ax.set_xlabel("Ticks after warmup")
-    ax.set_ylabel("Boredom ends / tick / run")
-    ax.set_title("Boredom rate (log-log)")
-    ax.legend()
-    ax.grid(True, alpha=0.2, which="both")
-
-    # 2. Warmup attention decay
-    ax = axes[1]
-    for idx, warmup in enumerate(warmups):
-        parts = []
-        for run in range(config.num_runs):
-            d = all_data[warmup][run]
-            obs = _post_warmup_actions(d["actions"], d["creates"], warmup)
-            parts.append(
-                obs.select(
-                    ((pl.col("time") - warmup) // 100).cast(pl.Int64).alias("bin"),
-                    pl.col("is_warmup"),
-                )
-            )
-        if not parts:
-            continue
-        all_binned = pl.concat(parts)
-        agg = all_binned.group_by("bin").agg(
-            pl.len().alias("total"),
-            pl.col("is_warmup").sum().alias("wp"),
-        ).sort("bin")
-
-        max_bin = agg["bin"].max()
-        full = pl.DataFrame({"bin": range(max_bin + 1)}).join(
-            agg, on="bin", how="left"
-        ).fill_null(0)
-        xs = np.arange(0, max_bin + 1) * 100
-        ys = [
-            wp / total * 100 if total > 50 else np.nan
-            for wp, total in zip(full["wp"].to_list(), full["total"].to_list())
-        ]
-        ax.plot(xs, ys, "-", color=colors[idx], label=f"w={warmup:g}", linewidth=1.5)
-    ax.set_xlabel("Ticks after warmup")
-    ax.set_ylabel("% actions on warmup posts")
-    ax.set_title("Warmup attention decay")
-    ax.legend()
-    ax.grid(True, alpha=0.2)
-
-    # 3. New post traction
-    ax = axes[2]
-    for idx, warmup in enumerate(warmups):
-        imp_parts, np_parts = [], []
-        for run in range(config.num_runs):
-            d = all_data[warmup][run]
-            actions, creates = d["actions"], d["creates"]
-            obs = _post_warmup_actions(actions, creates, warmup)
-            imp_parts.append(
-                obs.filter(~pl.col("is_warmup"))
-                .select(((pl.col("time") - warmup) // 100).cast(pl.Int64).alias("bin"))
-            )
-            np_parts.append(
-                creates.filter(pl.col("time") >= warmup)
-                .select(((pl.col("time") - warmup) // 100).cast(pl.Int64).alias("bin"))
-            )
-        if not imp_parts:
-            continue
-
-        imp_agg = (
-            pl.concat(imp_parts).group_by("bin").len(name="impressions").sort("bin")
-        )
-        np_agg = (
-            pl.concat(np_parts).group_by("bin").len(name="new_posts").sort("bin")
-        )
-
-        max_bin = max(
-            imp_agg["bin"].max() if not imp_agg.is_empty() else 0,
-            np_agg["bin"].max() if not np_agg.is_empty() else 0,
-        )
-        full_imp = pl.DataFrame({"bin": range(max_bin + 1)}).join(
-            imp_agg, on="bin", how="left"
-        ).fill_null(0)
-        full_np = pl.DataFrame({"bin": range(max_bin + 1)}).join(
-            np_agg, on="bin", how="left"
-        ).fill_null(0)
-
-        xs = np.arange(0, max_bin + 1) * 100
-        ys = [
-            imp / max(np_count, 1)
-            for imp, np_count in zip(
-                full_imp["impressions"].to_list(),
-                full_np["new_posts"].to_list(),
-            )
-        ]
-        ax.plot(xs, ys, "-", color=colors[idx], label=f"w={warmup:g}", linewidth=1.5)
-    ax.set_xlabel("Ticks after warmup")
-    ax.set_ylabel("Impressions per new post")
-    ax.set_title("New post traction")
-    ax.legend()
-    ax.grid(True, alpha=0.2)
-
+    boredom_panel(axes[0])
+    attention_panel(axes[1])
+    traction_panel(axes[2])
     fig.suptitle(
         "Warmup dynamics: boredom → warmup drain → new content takeoff",
-        fontsize=14,
-        fontweight="bold",
+        fontsize=14, fontweight="bold",
     )
     fig.tight_layout()
-    fig.savefig(config.output_dir / "combined_summary.png", dpi=150)
+    fig.savefig(folder / "combined_summary.png", dpi=150)
     plt.close(fig)
-    print("  Saved combined_summary.png")
+    print("  Saved combined_summary/ (boredom.png, attention_decay.png, new_post_traction.png, combined_summary.png)")
 
 
 if __name__ == "__main__":
