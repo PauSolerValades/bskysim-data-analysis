@@ -43,7 +43,7 @@ def main() -> None:
     parser.add_argument(
         "cascades",
         type=Path,
-        help="Directory containing warmup-{N}.ssv cascade files.",
+        help="Directory containing warmup-{N}.tsv cascade files.",
     )
     parser.add_argument(
         "datasets",

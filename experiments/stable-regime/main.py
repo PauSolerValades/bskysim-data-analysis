@@ -85,7 +85,7 @@ def main():
 
 
 def topology_size(trace_path: str) -> int:
-    with open(os.path.join(trace_path, "user_distributions.ssv")) as users_dist:
+    with open(os.path.join(trace_path, "user_distributions.tsv")) as users_dist:
         return len(users_dist.readlines())
 
 

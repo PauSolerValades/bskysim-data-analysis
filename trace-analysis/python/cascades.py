@@ -23,7 +23,7 @@ SCHEMA = {
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--ssv", type=str, default="../../cascades/10K_test.ssv",
+        "--ssv", type=str, default="../../cascades/10K_test.tsv",
         help="Path to cascades SSV file"
     )
     args = parser.parse_args()
@@ -31,10 +31,10 @@ def main():
     path = Path(args.ssv).resolve()
     print(f"Loading {path} ...")
 
-    # SSV is space-separated, use scan_csv with separator
+    # cascade files are tab-separated .tsv
     df = pl.read_csv(
         str(path),
-        separator=" ",
+        separator="\t",
         schema_overrides=SCHEMA,
         has_header=True,
     )

@@ -57,8 +57,8 @@ def main(config: Config) -> None:
         ],
         orient="row",
     )
-    out_path = config.output_dir / "summary_table.ssv"
-    result.write_csv(out_path, separator=" ")
+    out_path = config.output_dir / "summary_table.tsv"
+    result.write_csv(out_path, separator="\t")
     print(f"\nSaved {out_path}")
 
 
@@ -119,10 +119,10 @@ def cascade_stats(
     config: Config, warmup: float
 ) -> tuple[int, float, float, float, float]:
     """Return (post_warmup_posts, pct_prolif, mean_reposts, pct_indirect, pct_multilevel)."""
-    cascade_path = config.cascades_dir / f"warmup-{warmup:g}.ssv"
+    cascade_path = config.cascades_dir / f"warmup-{warmup:g}.tsv"
     df = pl.read_csv(
         str(cascade_path),
-        separator=" ",
+        separator="\t",
         schema_overrides=SSV_SCHEMA,
         has_header=True,
     )
