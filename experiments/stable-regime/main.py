@@ -5,6 +5,20 @@ import os
 import sys
 
 import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Thesis styling (AGENTS.md): whitegrid, 11pt base, colorblind palette.
+# ponytail: usetex skipped — no TeX on this box; flip text.usetex=True if
+# the thesis needs LaTeX rendering (and install TeX).
+sns.set_theme(style="whitegrid")
+plt.rcParams.update({
+    "text.usetex": False,
+    "axes.labelsize": 11,
+    "font.size": 11,
+    "legend.fontsize": 11,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+})
 
 from enum import Enum
 from typing import Tuple
@@ -188,10 +202,10 @@ def plot_run(
     fig, ax1 = plt.subplots(figsize=(10, 6))
 
     t_raw = [i * bin_len for i in range(len(percentage_raw))]
-    ax1.plot(t_raw, percentage_raw, alpha=1, color="tab:blue", label="raw")
+    ax1.plot(t_raw, percentage_raw, alpha=1, color="#0072B2", label="raw")
 
     t_mean = [(i + window_size / 2) * bin_len for i in range(len(percentage_means))]
-    ax1.plot(t_mean, percentage_means, alpha=0.5, color="tab:red", label="rolling mean")
+    ax1.plot(t_mean, percentage_means, alpha=0.5, color="#D55E00", label="rolling mean")
 
     ax1.set_xlabel("Time (s)")
     ax1.set_ylabel("% online users")
@@ -199,7 +213,7 @@ def plot_run(
     if stable_at is not None:
         ax1.axvline(
             x=stable_at,
-            color="tab:red",
+            color="#D55E00",
             linestyle="--",
             label=f"stable ({stable_at:.0f}s, {stable_pct:.1f}%)",
         )
