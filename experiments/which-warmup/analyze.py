@@ -36,10 +36,11 @@ def analyze(size, w):
         "n_immediate": len(immediate),
     }
 
-print(f"{'size':>5} {'w':>6} {'median backlog':>14} {'first-sess boredom%':>19} {'imm(<=500t) boredom%':>21} {'n_imm':>7}")
-for size in ["10K", "100K"]:
-    for w in [0, 100, 500, 1000, 2000, 5000, 10000]:
-        r = analyze(size, w)
-        if r:
-            print(f"{size:>5} {r['w']:>6} {r['backlog_median']:>14} {r['first_boredom_pct']:>18.1f} "
-                  f"{r['immediate_boredom_pct']:>20.1f} {r['n_immediate']:>7}")
+if __name__ == "__main__":
+    print(f"{'size':>5} {'w':>6} {'median backlog':>14} {'first-sess boredom%':>19} {'imm(<=500t) boredom%':>21} {'n_imm':>7}")
+    for size in ["10K", "100K"]:
+        for w in [0, 100, 500, 1000, 2000, 5000, 10000]:
+            r = analyze(size, w)
+            if r:
+                print(f"{size:>5} {r['w']:>6} {r['backlog_median']:>14} {r['first_boredom_pct']:>18.1f} "
+                      f"{r['immediate_boredom_pct']:>20.1f} {r['n_immediate']:>7}")
