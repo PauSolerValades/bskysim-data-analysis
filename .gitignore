@@ -3,3 +3,9 @@ results/
 *.csv
 *.ssv
 *.tsv
+
+# any data folder
+data/
+
+# any pycache
+__pycache__/
