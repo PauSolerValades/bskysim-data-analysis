@@ -74,7 +74,7 @@ SES_SCHEMA_OVERRIDES: dict[str, pl.DataType] = {
 
 def session_stats(config: Config, warmup: float) -> tuple[float, float]:
     """Return (boredom_pct, avg_session_length) for one warmup value."""
-    ticks_dir = config.traces_dir / f"{warmup:g}-ticks"
+    ticks_dir = config.traces_dir / f"ws{warmup:g}"
 
     parts = []
     for run in range(config.num_runs):

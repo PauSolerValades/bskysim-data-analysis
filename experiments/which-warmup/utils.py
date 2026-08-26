@@ -26,7 +26,7 @@ class Config:
 # Discovery helpers
 # ---------------------------------------------------------------------------
 
-_TICKS_RE = re.compile(r"^(\d+(?:\.\d+)?)-ticks$")
+_TICKS_RE = re.compile(r"^ws(\d+(?:\.\d+)?)$")
 
 
 def discover_warmups(traces_dir: Path) -> list[float]:
@@ -52,7 +52,7 @@ def discover_warmups(traces_dir: Path) -> list[float]:
 def discover_num_runs(traces_dir: Path, warmup: float) -> int:
     """Count how many ``{N}-session_trace.jsonl`` files exist for a given
     warmup value."""
-    ticks_dir = traces_dir / f"{warmup:g}-ticks"
+    ticks_dir = traces_dir / f"ws{warmup:g}"
     count = 0
     if ticks_dir.is_dir():
         for f in ticks_dir.iterdir():

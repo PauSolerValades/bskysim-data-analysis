@@ -91,7 +91,7 @@ SES_SCHEMA: dict[str, pl.DataType] = {
 
 def _load_run(config: Config, warmup: float, run: int) -> dict[str, pl.DataFrame]:
     """Load all trace files for a single run — parallel I/O."""
-    base = str(config.traces_dir / f"{warmup:g}-ticks" / str(run))
+    base = str(config.traces_dir / f"ws{warmup:g}" / str(run))
 
     def _read(kind: str, schema: dict) -> pl.DataFrame:
         return pl.read_ndjson(base + kind, schema_overrides=schema)
@@ -280,7 +280,8 @@ def _write_graph_folder(graph_name, combined_title, warmups, draw_one, draw_all,
         plt.close(fig)
 
     n = len(warmups)
-    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    nrows = (n + 3) // 3  # ceil((n+1)/3): n warmup panels + 1 overlay
+    fig, axes = plt.subplots(nrows, 3, figsize=(15, 5 * nrows))
     flat = axes.flatten()
     for i, w in enumerate(warmups):
         draw_one(flat[i], w, colors[i])
