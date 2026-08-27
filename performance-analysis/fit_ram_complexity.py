@@ -2,9 +2,10 @@
 """RAM scalability (big-O) of BskySim across dataset sizes.
 
 Fits candidate complexity models to per-run RAM (normalized per worker, using
-the MEDIAN per-run value per size) and plots the two power-law fit lines on a
-log-log scatter -- mirroring python-utils/plot_time_complexity.py, but for
-memory instead of time.
+the MEDIAN per-run value per size), plots a log-log scatter with a min→max
+range band per size and the two power-law fit lines. Mirrors
+python-utils/plot_time_complexity.py, but for memory instead of time, and the
+confidence interval is replaced by the per-size min→max range.
 
 Usage:
     uv run python fit_ram_complexity.py
@@ -12,14 +13,14 @@ Usage:
 
 from __future__ import annotations
 
+import shutil
 import statistics
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
+from matplotlib.patches import Rectangle
 
 import analyze
 
@@ -31,9 +32,21 @@ SIZES = ["10K", "50K", "100K", "500K", "1M"]
 N = {"10K": 1e4, "50K": 5e4, "100K": 1e5, "500K": 5e5, "1M": 1e6}
 BIG = ["100K", "500K", "1M"]
 
+# Thesis styling (firehose-analysis/AGENTS.md): whitegrid, LaTeX, 11pt base.
+sns.set_theme(style="whitegrid")
+plt.rcParams.update({
+    # LaTeX only when available; falls back to mathtext on machines without it.
+    "text.usetex": shutil.which("latex") is not None,
+    "axes.labelsize": 11,
+    "font.size": 11,
+    "legend.fontsize": 11,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+})
 
-def per_size_median_gb(ram: list) -> dict[str, float]:
-    """Median per-run peak RSS per size, in GB, normalized per worker."""
+
+def per_size_stats(ram: list) -> dict[str, tuple[float, float, float]]:
+    """Per size -> (min, median, max) per-run peak RSS in GB, per worker."""
     out = {}
     for size, start, end in analyze.SIZES:
         times = analyze.parse_times(TRACES / size / "execution_times.ssv")
@@ -44,7 +57,7 @@ def per_size_median_gb(ram: list) -> dict[str, float]:
         peaks = [max((r[2] for r in ram if s <= r[0] <= e), default=None) for s, e, w, r in slices]
         vals = [analyze.gb(p) / workers for p in peaks if p is not None]
         if vals:
-            out[size] = statistics.median(vals)
+            out[size] = (min(vals), statistics.median(vals), max(vals))
     return out
 
 
@@ -72,35 +85,41 @@ def fit_models(n: np.ndarray, y: np.ndarray, indent: str = "  ") -> None:
 
 def main() -> None:
     ram = analyze.parse_ram(RAM_FILE)
-    data = per_size_median_gb(ram)
-    sizes = [s for s in SIZES if s in data]
+    stats = per_size_stats(ram)
+    sizes = [s for s in SIZES if s in stats]
     n = np.array([N[s] for s in sizes])
-    y = np.array([data[s] for s in sizes])
+    y = np.array([stats[s][1] for s in sizes])  # median
 
-    print("per-size median per-run RAM (GB, normalized per worker):")
-    print(f"{'size':<6} {'n':>10} {'median GB':>11}")
-    print("-" * 30)
+    print("per-size per-run RAM (GB, normalized per worker):")
+    print(f"{'size':<6} {'min':>9} {'median':>9} {'max':>9}")
+    print("-" * 34)
     for s in sizes:
-        print(f"{s:<6} {N[s]:>10.0f} {data[s]:>11.1f}")
+        lo, med, hi = stats[s]
+        print(f"{s:<6} {lo:>9.1f} {med:>9.1f} {hi:>9.1f}")
     print()
 
     print(f"Fit on median, all sizes ({', '.join(sizes)}):")
     fit_models(n, y)
 
     n_big = np.array([N[s] for s in BIG])
-    y_big = np.array([data[s] for s in BIG])
+    y_big = np.array([stats[s][1] for s in BIG])
     print(f"\nFit on median, big only ({', '.join(BIG)}):")
     fit_models(n_big, y_big)
 
-    # ---- log-log scatter + the two fit lines ----
     p_all, c_all = powerlaw(n, y)
     p_big, c_big = powerlaw(n_big, y_big)
 
+    # ---- log-log scatter + min/max band + the two fit lines ----
+    palette = sns.color_palette("colorblind", len(sizes))
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.scatter(n, y, s=50, zorder=3)
-    for s, xi, yi in zip(sizes, n, y):
-        ax.annotate(s, (xi, yi), textcoords="offset points",
-                    xytext=(0, 8), ha="center", fontsize=9)
+
+    for s, color in zip(sizes, palette):
+        lo, med, hi = stats[s]
+        w = 0.3 * N[s]
+        ax.add_patch(Rectangle((N[s] - w / 2, lo), w, hi - lo,
+                               facecolor=color, alpha=0.5, edgecolor="none",
+                               zorder=4))
+        ax.plot([N[s]], [med], marker="o", ms=5, color=color, zorder=5)
 
     n_fit = np.geomspace(n.min(), n.max(), 100)
     ax.plot(n_fit, c_all * n_fit ** p_all, "--", color="0.3", lw=1.5,
@@ -111,8 +130,8 @@ def main() -> None:
 
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel("Network size n")
-    ax.set_ylabel("Median per-run RAM, per worker (GB)")
+    ax.set_xlabel("Network size $n$")
+    ax.set_ylabel("Per-run RAM, per worker (GB)")
     ax.set_title("BskySim RAM scalability per dataset")
     ax.legend()
 
