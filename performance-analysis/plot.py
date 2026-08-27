@@ -62,13 +62,14 @@ def main() -> None:
         ax.plot([xi - 0.18, xi + 0.18], [l, l], color="0.4", lw=1.5, zorder=2)
         ax.plot([xi - 0.18, xi + 0.18], [h, h], color="0.4", lw=1.5, zorder=2)
 
-    # median (typical run) marker, labeled
+    # median (typical run) marker, labeled to the right so it doesn't collide
     ax.scatter(x, med, color="C0", s=45, zorder=3, label="median (typical run)")
     for xi, m in zip(x, med):
         ax.annotate(f"{fmt(m)} GB", (xi, m), textcoords="offset points",
-                    xytext=(0, 9), ha="center", fontsize=8)
+                    xytext=(9, 0), ha="left", va="center", fontsize=8)
 
     ax.set_yscale("log")
+    ax.set_ylim(top=max(hi) * 2.0)  # extra headroom above the tallest bar
     ax.set_xticks(list(x))
     ax.set_xticklabels(labels)
     ax.set_xlabel("size")
