@@ -48,24 +48,24 @@ trace mtime (last write, ≈ end).
 `workers`/`runs` are read from `execution_times.ssv` (what actually ran), not
 from `configs/build-configs/final/*.json` (edited after the runs).
 
-### Table 2 — RAM per run
+### Table 2 — RAM per run (normalized per worker)
 
-| size | est. single run (GB) | per-run min → max (GB) |
-|------|----------------------|------------------------|
-| 10K  | 2.1                  | 23.3 → 30.2            |
-| 50K  | 26.6                 | 224.7 → 424.9          |
-| 100K | 89.2                 | 651.0 → 1070.0         |
-| 500K | 470.4                | 468.4 → 932.5          |
-| 1M   | 638.0                | 311.8 → 633.3          |
+| size | workers | min | median | max (GB) |
+|------|---------|-----|--------|-----------|
+| 10K  | 16      | 1.46  | 1.46   | 1.89      |
+| 50K  | 16      | 14.04 | 21.70  | 26.55     |
+| 100K | 12      | 54.25 | 77.38  | 89.17     |
+| 500K | 2       | 234.18| 436.77 | 466.23    |
+| 1M   | 1       | 311.81| 607.22 | 633.26    |
 
-- **est. single run** = peak-per-process ÷ workers, a rough estimate of one
-  isolated run (assumes per-run memory is additive across workers).
-- **per-run min → max** = peak RSS during each run's time slice. `min` is the
-  first run, `max` the last run.
+Each value = peak RSS during a run's time slice, divided by the worker count.
+`min`/`median`/`max` are the first / typical / last runs (RSS accumulates across
+runs). For `workers > 1` the slices overlap, so these are an upper bound on an
+isolated single run (shared topology isn't separated out).
 
 The process peaks look non-monotonic (100K > 500K > 1M) because they include
 worker concurrency (12 vs 2 vs 1 workers). Normalized per worker, the
-single-run footprint is monotonic: 2.1 → 638 GB.
+single-run footprint is monotonic: 1.5 → 633 GB.
 
 ## Caveats
 

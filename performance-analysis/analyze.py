@@ -170,37 +170,31 @@ def main() -> None:
     print("  not from configs/build-configs/final/*.json (edited after the runs).")
     print()
 
-    # ---- Table 2: RAM per run ----
-    print("=" * 86)
-    print("Table 2 - RAM per run")
-    print("=" * 86)
+    # ---- Table 2: RAM per run (normalized per worker) ----
+    print("=" * 80)
+    print("Table 2 - RAM per run (normalized per worker)")
+    print("=" * 80)
     print(
-        f"{'size':>5} {'workers':>8} {'runs':>5} "
-        f"{'est.run':>8} {'min':>9} {'median':>9} {'max':>9}  (GB)"
+        f"{'size':>5} {'workers':>8} {'runs':>5} {'min':>9} {'median':>9} {'max':>9}  (GB)"
     )
-    print("-" * 86)
-    for size, workers, runs, peak_mb in table1:
+    print("-" * 80)
+    for size, workers, runs, _ in table1:
         peaks = per_run.get(size)
         if not peaks or all(p is None for p in peaks):
             print(f"{size:>5} {workers:>8} {runs:>5}   (runs shorter than 10s sampling)")
             continue
-        vals = [gb(p) for p in peaks if p is not None]
+        vals = [gb(p) / workers for p in peaks if p is not None]
         n_ok = len(vals)
-        est = gb(peak_mb) / workers if workers else float("nan")
         print(
             f"{size:>5} {workers:>8} {runs:>5} "
-            f"{est:>8.1f} {min(vals):>9.2f} {statistics.median(vals):>9.2f} {max(vals):>9.2f}"
+            f"{min(vals):>9.2f} {statistics.median(vals):>9.2f} {max(vals):>9.2f}"
             f"   ({n_ok}/{runs} runs resolved)"
         )
     print()
-    print("  est.run = peak-per-process / workers: rough estimate of ONE isolated run,")
-    print("            assuming per-run memory is additive across workers.")
-    print("  min/median/max = peak RSS during each run's time slice (from")
-    print("            execution_times.ssv). For workers > 1 the slices overlap, so")
-    print("            these still include concurrent + accumulated memory; the max")
-    print("            tends to equal the process peak.")
-    print("  RSS accumulates across runs (state reused, not freed), so the per-run")
-    print("  peak grows run-over-run -- min = first run, max = last run.")
+    print("  Each value = peak RSS during a run's time slice, divided by workers.")
+    print("  min/median/max are the first / typical / last runs (RSS accumulates).")
+    print("  For workers > 1 the slices overlap, so this is an upper bound on an")
+    print("  isolated single run (shared topology isn't separated out).")
 
     if args.out_csv:
         out = Path(args.out_csv)
