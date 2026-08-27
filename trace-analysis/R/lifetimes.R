@@ -11,24 +11,32 @@ option_list <- list(
   make_option("--data-dir", type = "character", default = "../data",
               help = "Path to dataset directory [default: %default]"),
   make_option("--out-dir",  type = "character", default = "output",
-              help = "Output directory [default: %default]")
+              help = "Output directory [default: %default]"),
+  make_option("--warmup-cutoff", type = "double", default = 1000,
+              help = "Drop posts with creation_time < this value [default: %default]"),
+  make_option("--sim-duration", type = "double", default = 5000,
+              help = "Total simulation duration (observation end T) [default: %default]"),
+  make_option("--quiet-threshold", type = "double", default = 0,
+              help = "Censor cascades silent for < this many units before T (0 = strict) [default: %default]")
 )
 
 opts <- parse_args(OptionParser(option_list = option_list))
-DATA_DIR <- opts[["data-dir"]]
-OUT_DIR  <- opts[["out-dir"]]
+DATA_DIR       <- opts[["data-dir"]]
+OUT_DIR        <- opts[["out-dir"]]
+WARMUP_CUTOFF  <- opts[["warmup-cutoff"]]
+SIM_DURATION   <- opts[["sim-duration"]]
+QUIET_THRESHOLD <- opts[["quiet-threshold"]]
 
 
 cat("Loading post_lifetime.parquet...\n")
 lifetime <- read_parquet(file.path(DATA_DIR, "post_lifetime.parquet"))
 cat(sprintf("post_lifetime: %d rows (all)\n", nrow(lifetime)))
 
-# ── 1b. Drop warmup (creation_time < 1000) ────────────────────────────────────
+# ── 1b. Drop warmup (creation_time < WARMUP_CUTOFF) ──────────────────────────
 
-warmup_cutoff <- 1000
-lifetime <- lifetime %>% filter(creation_time >= warmup_cutoff)
-cat(sprintf("post_lifetime: %d rows (creation_time >= %d, warmup removed)\n",
-            nrow(lifetime), warmup_cutoff))
+lifetime <- lifetime %>% filter(creation_time >= WARMUP_CUTOFF)
+cat(sprintf("post_lifetime: %d rows (creation_time >= %.0f, warmup removed)\n",
+            nrow(lifetime), WARMUP_CUTOFF))
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NOTE: We intentionally exclude posts with zero reposts (total_reposts == 0).
@@ -43,30 +51,21 @@ cat(sprintf("post_lifetime: %d rows (creation_time >= %d, warmup removed)\n",
 # that is a binomial proportion, not a survival problem — see post_metrics.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# ── 2. Compute duration & censoring threshold τ per run ───────────────────────
+# ── 2. Compute duration & per-post censoring (administrative, at T) ──────────
 
 surv_data <- lifetime %>%
-  mutate(duration = last_repost - creation_time) %>%
-  group_by(run_id) %>%
   mutate(
-    tau      = quantile(duration, probs = 0.99, na.rm = TRUE),
-    dead     = duration <= tau,
-    surv_time = ifelse(dead, duration, tau),
-    event    = ifelse(dead, 1L, 0L)
+    duration   = last_repost - creation_time,
+    obs_window = SIM_DURATION - creation_time,
+    dead       = last_repost <= SIM_DURATION - QUIET_THRESHOLD,
+    surv_time  = ifelse(dead, duration, obs_window),
+    event      = ifelse(dead, 1L, 0L)
   ) %>%
-  ungroup() %>%
-  select(run_id, post_id, surv_time, event, tau)
+  select(run_id, post_id, surv_time, event)
 
 cat(sprintf("\nSurvival data: %d cascades\n", nrow(surv_data)))
-cat(sprintf("  Dead  (duration ≤ τ): %d\n", sum(surv_data$event == 1)))
-cat(sprintf("  Censored (duration > τ): %d\n", sum(surv_data$event == 0)))
-
-# Show τ range across runs
-tau_range <- surv_data %>%
-  distinct(run_id, tau) %>%
-  summarise(min_tau = min(tau), max_tau = max(tau), mean_tau = mean(tau))
-cat(sprintf("τ range across runs: %.2f – %.2f (mean %.2f)\n",
-            tau_range$min_tau, tau_range$max_tau, tau_range$mean_tau))
+cat(sprintf("  Dead     (silent >= δ): %d\n", sum(surv_data$event == 1)))
+cat(sprintf("  Censored (silent < δ): %d\n", sum(surv_data$event == 0)))
 
 # ── 3. Overall S(t) — Kaplan-Meier ───────────────────────────────────────────
 

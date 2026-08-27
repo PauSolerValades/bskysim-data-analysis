@@ -14,17 +14,25 @@ option_list <- list(
   make_option("--out-dir",  type = "character", default = "output",
               help = "Output directory [default: %default]"),
   make_option("--warmup-cutoff", type = "double", default = 1000,
-              help = "Drop posts with creation_time < this value [default: %default]")
+              help = "Drop posts with creation_time < this value [default: %default]"),
+  make_option("--sim-duration", type = "double", default = 5000,
+              help = "Total simulation duration (observation end T) [default: %default]"),
+  make_option("--quiet-threshold", type = "double", default = 0,
+              help = "Censor cascades silent for < this many units before T (0 = strict) [default: %default]")
 )
 
 opts <- parse_args(OptionParser(option_list = option_list))
-DATA_DIR      <- opts[["data-dir"]]
-OUT_DIR       <- opts[["out-dir"]]
-WARMUP_CUTOFF <- opts[["warmup-cutoff"]]
+DATA_DIR       <- opts[["data-dir"]]
+OUT_DIR        <- opts[["out-dir"]]
+WARMUP_CUTOFF  <- opts[["warmup-cutoff"]]
+SIM_DURATION   <- opts[["sim-duration"]]
+QUIET_THRESHOLD <- opts[["quiet-threshold"]]
 
 cat(sprintf("DATA_DIR       = %s\n", DATA_DIR))
 cat(sprintf("OUT_DIR        = %s\n", OUT_DIR))
 cat(sprintf("WARMUP_CUTOFF  = %.0f\n", WARMUP_CUTOFF))
+cat(sprintf("SIM_DURATION   = %.0f\n", SIM_DURATION))
+cat(sprintf("QUIET_THRESHOLD = %.2f\n", QUIET_THRESHOLD))
 
 # ── 1. Load data ─────────────────────────────────────────────────────────
 
@@ -52,31 +60,32 @@ cat(sprintf("After warmup filter (creation_time >= %.0f): %d rows\n",
 # If you are instead interested in "what fraction of posts ever get reposted",
 # that is a binomial proportion, not a survival problem — see post_metrics.
 #
-# This is a GLOBAL analysis: all runs are pooled together. τ is computed
-# once across the entire dataset, not per-run.
+# This is a GLOBAL analysis: all runs are pooled together.
+#
+# Censoring is administrative (right-censoring at the observation end T):
+#   - each post is observed for T - creation_time
+#   - dead     = last_repost <= T - δ  (silent for >= δ before the end)
+#   - censored = last_repost >  T - δ  (still possibly alive at the end)
+#   - δ = --quiet-threshold (0 = strict: only last_repost >= T is censored)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# ── 3. Compute duration & global censoring threshold τ ───────────────────
+# ── 3. Compute duration & per-post censoring (administrative, at T) ─────
 
 surv_data <- lifetime %>%
-  mutate(duration = last_repost - creation_time)
-
-tau <- quantile(surv_data$duration, probs = 0.99, na.rm = TRUE)
-cat(sprintf("\nGlobal τ (99th percentile): %.2f\n", tau))
-
-surv_data <- surv_data %>%
   mutate(
-    dead      = duration <= tau,
-    surv_time = ifelse(dead, duration, tau),
-    event     = ifelse(dead, 1L, 0L)
+    duration   = last_repost - creation_time,
+    obs_window = SIM_DURATION - creation_time,
+    dead       = last_repost <= SIM_DURATION - QUIET_THRESHOLD,
+    surv_time  = ifelse(dead, duration, obs_window),
+    event      = ifelse(dead, 1L, 0L)
   ) %>%
   select(run_id, post_id, surv_time, event, duration, total_reposts)
 
 cat(sprintf("Cascades: %d total\n", nrow(surv_data)))
-cat(sprintf("  Dead     (duration ≤ τ): %d (%.1f%%)\n",
+cat(sprintf("  Dead     (silent >= δ): %d (%.1f%%)\n",
             sum(surv_data$event == 1),
             sum(surv_data$event == 1) / nrow(surv_data) * 100))
-cat(sprintf("  Censored (duration > τ): %d (%.1f%%)\n",
+cat(sprintf("  Censored (silent < δ): %d (%.1f%%)\n",
             sum(surv_data$event == 0),
             sum(surv_data$event == 0) / nrow(surv_data) * 100))
 
@@ -130,7 +139,8 @@ p <- ggsurvplot(
 )
 
 ggsave(file.path(OUT_DIR, "global_survival_plot.png"),
-       plot = p$plot, width = 8, height = 5, dpi = 150)
+       plot = p$plot, width = 8, height = 5, dpi = 150,
+       create.dir = TRUE)
 cat(sprintf("Saved plot to %s/global_survival_plot.png\n", OUT_DIR))
 
 # ── 8. Save results ─────────────────────────────────────────────────────
