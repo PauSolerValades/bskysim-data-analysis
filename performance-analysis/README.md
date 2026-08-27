@@ -1,4 +1,4 @@
-# RAM Performance Analysis
+# BskySim Performance Analysis
 
 Peak-RAM analysis of the five final `bskysim` simulation runs
 (10K, 50K, 100K, 500K, 1M users), derived from the RAM monitor log
@@ -77,12 +77,34 @@ single-run footprint is monotonic: 1.5 → 633 GB.
 - RSS **accumulates** across runs (state is reused, not freed), so per-run
   peak grows run-over-run.
 
+## Time Performance
+
+Execution time per size, read from `steps/final/traces/<size>/execution_times.ssv`
+(`worker run_idx duration_ms`). CI95 = 1.96 · σ / √n.
+
+| size | runs | mean (ms) | ±CI95 (ms) | median (ms) | min (ms) | max (ms) |
+|------|------|-----------|------------|-------------|----------|----------|
+| 10K  | 100  | 2,667     | 124        | 2,500       | 2,002    | 4,458    |
+| 50K  | 100  | 34,230    | 969        | 32,927      | 27,580   | 46,842   |
+| 100K | 100  | 119,776   | 4,210      | 112,288     | 100,673  | 180,241  |
+| 500K | 100  | 731,821   | 4,376      | 732,814     | 684,260  | 815,866  |
+| 1M   | 98   | 1,058,691 | 9,407      | 1,050,362   | 1,002,021| 1,340,140|
+
+Complexity fit (mean, all sizes): best simple model **O(n)** (R² = 0.963), free
+power-law exponent p = 1.32 (all sizes) and p = 0.98 (100K–1M). Per-user cost is
+_not_ constant (267 → 1,464 μs/user), so the mid-range is slightly superlinear —
+the same saturation pattern as RAM.
+
 ## Usage
 
 ```bash
-uv run python analyze.py
-# options:
-#   --ram-file    path to the monitor log (default /tmp/ram-final.txt)
-#   --traces-dir  path to the final trace dirs (default …/des-ctic-dev/steps/final/traces)
-#   --out-csv     optional dir to dump per-run CSVs
+uv run python analyze.py            # RAM tables (peak per process, per run)
+uv run python plot.py               # per-run RAM bar chart (normalized per worker)
+uv run python fit_ram_complexity.py # RAM complexity fit + scalability plot
+uv run python plot_time_complexity.py  # time complexity fit + scalability plot
+uv run python compute_complexity.py    # per-size mean ± CI95 time table + plot
 ```
+
+RAM inputs: `--ram-file` (default `/tmp/ram-final.txt`) and `--traces-dir`
+(default `…/des-ctic-dev/steps/final/traces`). Figures go to `figures/` (time)
+and `output/` (RAM).

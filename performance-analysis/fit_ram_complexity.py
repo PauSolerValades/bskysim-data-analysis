@@ -120,6 +120,9 @@ def main() -> None:
                                facecolor=color, alpha=0.5, edgecolor="none",
                                zorder=4))
         ax.plot([N[s]], [med], marker="o", ms=5, color=color, zorder=5)
+        ax.annotate(s, (N[s], hi), textcoords="offset points",
+                    xytext=(0, 6), ha="center", fontsize=10,
+                    fontweight="bold", color=color)
 
     n_fit = np.geomspace(n.min(), n.max(), 100)
     ax.plot(n_fit, c_all * n_fit ** p_all, "--", color="0.3", lw=1.5,
