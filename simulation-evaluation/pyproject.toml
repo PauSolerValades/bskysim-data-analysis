@@ -1,0 +1,12 @@
+[project]
+name = "simulation-evaluation"
+version = "0.1.0"
+description = "Empirical tests for the missing heavy tail in bskysim"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "polars>=1.42",
+    "numpy",
+    "matplotlib",
+    "seaborn",
+]

@@ -1,5 +1,27 @@
 # BskySim Performance Analysis
 
+## Live RAM monitoring
+
+`ram-monitor.sh` samples RAM of running `bskysim` processes and writes one
+file per build config into `ram/`:
+
+```bash
+./ram-monitor.sh &          # sample every 10 s (default) -> ./ram/<config>.txt
+./ram-monitor.sh -i 1       # sample every second
+./ram-monitor.sh -o /tmp/x  # custom output dir
+```
+
+It groups each `bskysim` by the `-Dconfig=<path>` of the ancestor `zig build`
+(walking the PPid chain), so the file is named `random-timeline-100K.txt`,
+`final-10K.txt`, etc. Each line is the same format `analyze.py` parses
+(`<epoch> cnt=<n> maxrss=<MB>`), so it can be passed straight to `--ram-file`.
+For hand-run bskysim (no `zig build` ancestor) the label falls back to the
+`--outputdir` basename. Stop it with `kill %1` (or `Ctrl-C`).
+
+`ram-single-run.json` is a one-run (10K, final params, 1 worker) build config
+for testing the monitor: `zig build -Dconfig=../bskysim-data-analysis/performance-analysis/ram-single-run.json sim`
+from the `des-ctic-dev` repo root.
+
 Peak-RAM analysis of the five final `bskysim` simulation runs
 (10K, 50K, 100K, 500K, 1M users), derived from the RAM monitor log
 `/tmp/ram-final.txt`.
@@ -107,4 +129,5 @@ uv run python compute_complexity.py    # per-size mean ± CI95 time table + plot
 
 RAM inputs: `--ram-file` (default `/tmp/ram-final.txt`) and `--traces-dir`
 (default `…/des-ctic-dev/steps/final/traces`). Figures go to `figures/` (time)
-and `output/` (RAM).
+and `output/` (RAM). For live capture use `ram-monitor.sh` (see above), which
+writes per-config files under `ram/` in the same format.

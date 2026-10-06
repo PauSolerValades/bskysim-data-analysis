@@ -137,7 +137,7 @@ def main() -> None:
     ax.legend()
 
     fig.tight_layout()
-    out_path = OUTPUT / "time_scalability.png"
+    out_path = OUTPUT / "time_scalability.svg"
     fig.savefig(out_path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     print(f"\nPlot saved: {out_path}")

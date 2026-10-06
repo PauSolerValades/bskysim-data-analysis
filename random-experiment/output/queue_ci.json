@@ -1,0 +1,218 @@
+{
+  "lifo_10K": {
+    "n_runs": 100,
+    "pct_nt": {
+      "within_run": 0.0199,
+      "within_cascade": 0.01043
+    },
+    "size_mean": {
+      "within_run": 0.0021,
+      "within_cascade": 0.00165
+    },
+    "out_mean": {
+      "within_run": 0.0014,
+      "within_cascade": 0.00099
+    },
+    "sv_mean": {
+      "within_run": 0.0005,
+      "within_cascade": 0.00042
+    },
+    "viral_sv_mean": {
+      "within_run": 0.0011,
+      "within_cascade": 0.00106
+    },
+    "broadcast_pct": {
+      "within_run": 0.0701,
+      "within_cascade": 0.05905
+    }
+  },
+  "lifo_100K": {
+    "n_runs": 100,
+    "pct_nt": {
+      "within_run": 0.0056,
+      "within_cascade": 0.0033
+    },
+    "size_mean": {
+      "within_run": 0.001,
+      "within_cascade": 0.00067
+    },
+    "out_mean": {
+      "within_run": 0.0007,
+      "within_cascade": 0.00046
+    },
+    "sv_mean": {
+      "within_run": 0.0002,
+      "within_cascade": 0.00014
+    },
+    "viral_sv_mean": {
+      "within_run": 0.0003,
+      "within_cascade": 0.00034
+    },
+    "broadcast_pct": {
+      "within_run": 0.0208,
+      "within_cascade": 0.01791
+    }
+  },
+  "lifo_500K": {
+    "n_runs": 100,
+    "pct_nt": {
+      "within_run": 0.0031,
+      "within_cascade": 0.00141
+    },
+    "size_mean": {
+      "within_run": 0.0008,
+      "within_cascade": 0.00055
+    },
+    "out_mean": {
+      "within_run": 0.0007,
+      "within_cascade": 0.00044
+    },
+    "sv_mean": {
+      "within_run": 0.0001,
+      "within_cascade": 7e-05
+    },
+    "viral_sv_mean": {
+      "within_run": 0.0002,
+      "within_cascade": 0.00017
+    },
+    "broadcast_pct": {
+      "within_run": 0.0081,
+      "within_cascade": 0.00804
+    }
+  },
+  "lifo_1M": {
+    "n_runs": 91,
+    "pct_nt": {
+      "within_run": 0.1032,
+      "within_cascade": 0.00102
+    },
+    "size_mean": {
+      "within_run": 0.0067,
+      "within_cascade": 0.00059
+    },
+    "out_mean": {
+      "within_run": 0.004,
+      "within_cascade": 0.00049
+    },
+    "sv_mean": {
+      "within_run": 0.0013,
+      "within_cascade": 5e-05
+    },
+    "viral_sv_mean": {
+      "within_run": 0.0013,
+      "within_cascade": 0.00014
+    },
+    "broadcast_pct": {
+      "within_run": 0.1244,
+      "within_cascade": 0.00619
+    }
+  },
+  "random_10K": {
+    "n_runs": 100,
+    "pct_nt": {
+      "within_run": 0.0217,
+      "within_cascade": 0.01068
+    },
+    "size_mean": {
+      "within_run": 0.0017,
+      "within_cascade": 0.00146
+    },
+    "out_mean": {
+      "within_run": 0.001,
+      "within_cascade": 0.00091
+    },
+    "sv_mean": {
+      "within_run": 0.0004,
+      "within_cascade": 0.00037
+    },
+    "viral_sv_mean": {
+      "within_run": 0.001,
+      "within_cascade": 0.001
+    },
+    "broadcast_pct": {
+      "within_run": 0.0625,
+      "within_cascade": 0.05532
+    }
+  },
+  "random_100K": {
+    "n_runs": 100,
+    "pct_nt": {
+      "within_run": 0.0053,
+      "within_cascade": 0.0034
+    },
+    "size_mean": {
+      "within_run": 0.0006,
+      "within_cascade": 0.00059
+    },
+    "out_mean": {
+      "within_run": 0.0005,
+      "within_cascade": 0.00042
+    },
+    "sv_mean": {
+      "within_run": 0.0001,
+      "within_cascade": 0.00012
+    },
+    "viral_sv_mean": {
+      "within_run": 0.0003,
+      "within_cascade": 0.00032
+    },
+    "broadcast_pct": {
+      "within_run": 0.0166,
+      "within_cascade": 0.01655
+    }
+  },
+  "random_500K": {
+    "n_runs": 100,
+    "pct_nt": {
+      "within_run": 0.0028,
+      "within_cascade": 0.00147
+    },
+    "size_mean": {
+      "within_run": 0.0006,
+      "within_cascade": 0.00048
+    },
+    "out_mean": {
+      "within_run": 0.0005,
+      "within_cascade": 0.00039
+    },
+    "sv_mean": {
+      "within_run": 0.0001,
+      "within_cascade": 6e-05
+    },
+    "viral_sv_mean": {
+      "within_run": 0.0002,
+      "within_cascade": 0.00016
+    },
+    "broadcast_pct": {
+      "within_run": 0.007,
+      "within_cascade": 0.00739
+    }
+  },
+  "random_1M": {
+    "n_runs": 100,
+    "pct_nt": {
+      "within_run": 0.002,
+      "within_cascade": 0.00101
+    },
+    "size_mean": {
+      "within_run": 0.0006,
+      "within_cascade": 0.00049
+    },
+    "out_mean": {
+      "within_run": 0.0005,
+      "within_cascade": 0.00041
+    },
+    "sv_mean": {
+      "within_run": 0.0,
+      "within_cascade": 4e-05
+    },
+    "viral_sv_mean": {
+      "within_run": 0.0001,
+      "within_cascade": 0.00013
+    },
+    "broadcast_pct": {
+      "within_run": 0.0055,
+      "within_cascade": 0.00542
+    }
+  }
+}

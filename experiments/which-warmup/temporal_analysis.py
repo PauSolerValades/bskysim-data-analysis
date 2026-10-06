@@ -226,16 +226,16 @@ def _write_graph_folder(graph_name, combined_title, warmups, draw_one, draw_all,
         draw_one(ax, w, colors[i])
         ax.set_title(f"warmup={w:g}")
         fig.tight_layout()
-        fig.savefig(folder / f"{w:g}.png", dpi=150)
+        fig.savefig(folder / f"{w:g}.svg", dpi=150)
         plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(10, 6))
     draw_all(ax, warmups, colors)
     ax.set_title(combined_title)
     fig.tight_layout()
-    fig.savefig(folder / "combined.png", dpi=150)
+    fig.savefig(folder / "combined.svg", dpi=150)
     plt.close(fig)
-    print(f"  Saved {graph_name}/ ({len(warmups)} warmups + combined.png)")
+    print(f"  Saved {graph_name}/ ({len(warmups)} warmups + combined.svg)")
 
 
 # ---------------------------------------------------------------------------

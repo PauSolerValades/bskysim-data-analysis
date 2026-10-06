@@ -94,6 +94,6 @@ for size in SIZES:
         ax.set_xlim(0, XMAX)
         ax.legend(); ax.grid(True, alpha=0.3)
         fig.tight_layout()
-        fig.savefig(os.path.join(OUT, f"initial_conditions_{size}{suffix}.png"))
+        fig.savefig(os.path.join(OUT, f"initial_conditions_{size}{suffix}.svg"))
         plt.close(fig)
     print(f"  saved {size}: linear + log")

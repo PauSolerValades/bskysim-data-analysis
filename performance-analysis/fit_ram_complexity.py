@@ -140,7 +140,7 @@ def main() -> None:
 
     fig.tight_layout()
     OUTPUT.mkdir(exist_ok=True)
-    out_path = OUTPUT / "ram_scalability.png"
+    out_path = OUTPUT / "ram_scalability.svg"
     fig.savefig(out_path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     print(f"\nPlot saved: {out_path}")

@@ -1,0 +1,262 @@
+{
+  "lifo_500K": {
+    "n_runs": 100,
+    "buckets": {
+      "<=10": {
+        "mean_size": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "11-100": {
+        "mean_size": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "101-1k": {
+        "mean_size": {
+          "within_run": 0.0001,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "1k-10k": {
+        "mean_size": {
+          "within_run": 0.0002,
+          "within_cascade": 0.0001
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "10k-100k": {
+        "mean_size": {
+          "within_run": 0.0021,
+          "within_cascade": 0.0015
+        },
+        "p_ge50": {
+          "within_run": 9e-06,
+          "within_cascade": 7e-06
+        }
+      },
+      ">100k": {
+        "mean_size": {
+          "within_run": 6.2578,
+          "within_cascade": 5.0573
+        },
+        "p_ge50": {
+          "within_run": 0.016297,
+          "within_cascade": 0.013412
+        }
+      }
+    }
+  },
+  "lifo_1M": {
+    "n_runs": 91,
+    "buckets": {
+      "<=10": {
+        "mean_size": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "11-100": {
+        "mean_size": {
+          "within_run": 0.0003,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "101-1k": {
+        "mean_size": {
+          "within_run": 0.0015,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "1k-10k": {
+        "mean_size": {
+          "within_run": 0.0068,
+          "within_cascade": 0.0001
+        },
+        "p_ge50": {
+          "within_run": 1e-06,
+          "within_cascade": 0.0
+        }
+      },
+      "10k-100k": {
+        "mean_size": {
+          "within_run": 0.043,
+          "within_cascade": 0.0022
+        },
+        "p_ge50": {
+          "within_run": 4.1e-05,
+          "within_cascade": 1.7e-05
+        }
+      },
+      ">100k": {
+        "mean_size": {
+          "within_run": 7.9265,
+          "within_cascade": 7.238
+        },
+        "p_ge50": {
+          "within_run": 0.01349,
+          "within_cascade": 0.012018
+        }
+      }
+    }
+  },
+  "random_500K": {
+    "n_runs": 100,
+    "buckets": {
+      "<=10": {
+        "mean_size": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "11-100": {
+        "mean_size": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "101-1k": {
+        "mean_size": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "1k-10k": {
+        "mean_size": {
+          "within_run": 0.0002,
+          "within_cascade": 0.0001
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "10k-100k": {
+        "mean_size": {
+          "within_run": 0.0019,
+          "within_cascade": 0.0013
+        },
+        "p_ge50": {
+          "within_run": 8e-06,
+          "within_cascade": 6e-06
+        }
+      },
+      ">100k": {
+        "mean_size": {
+          "within_run": 5.2648,
+          "within_cascade": 4.3463
+        },
+        "p_ge50": {
+          "within_run": 0.016661,
+          "within_cascade": 0.01388
+        }
+      }
+    }
+  },
+  "random_1M": {
+    "n_runs": 100,
+    "buckets": {
+      "<=10": {
+        "mean_size": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "11-100": {
+        "mean_size": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "101-1k": {
+        "mean_size": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "1k-10k": {
+        "mean_size": {
+          "within_run": 0.0002,
+          "within_cascade": 0.0001
+        },
+        "p_ge50": {
+          "within_run": 0.0,
+          "within_cascade": 0.0
+        }
+      },
+      "10k-100k": {
+        "mean_size": {
+          "within_run": 0.0029,
+          "within_cascade": 0.0019
+        },
+        "p_ge50": {
+          "within_run": 2.3e-05,
+          "within_cascade": 1.5e-05
+        }
+      },
+      ">100k": {
+        "mean_size": {
+          "within_run": 7.2426,
+          "within_cascade": 6.3549
+        },
+        "p_ge50": {
+          "within_run": 0.010918,
+          "within_cascade": 0.010428
+        }
+      }
+    }
+  }
+}
